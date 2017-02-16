@@ -7,8 +7,8 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 
-import com.alibaba.middleware.race.OrderSystemImpl.KV;
-import com.alibaba.middleware.race.OrderSystemImpl.Row;
+import com.alibaba.middleware.race.entity.KV;
+import com.alibaba.middleware.race.entity.Row;
 
 /**
  * Utils of string
