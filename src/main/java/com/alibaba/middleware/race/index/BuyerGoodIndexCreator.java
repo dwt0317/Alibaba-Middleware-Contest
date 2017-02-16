@@ -5,7 +5,6 @@ import java.util.Collection;
 import java.util.HashMap;
 import java.util.concurrent.CountDownLatch;
 
-import com.alibaba.middleware.race.OrderSystem.TypeException;
 import com.alibaba.middleware.race.entity.KV;
 import com.alibaba.middleware.race.entity.Row;
 import com.alibaba.middleware.race.utils.CommonConstants;
@@ -16,7 +15,7 @@ import com.alibaba.middleware.race.utils.StringUtils;
 
 
 /**
- * Index creator for buyer and good.
+ * Create index for buyer and good.
  * Indexes of buyer and good info are stored in memory with HashMap
  */
 public class BuyerGoodIndexCreator implements Runnable {

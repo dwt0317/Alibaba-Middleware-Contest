@@ -69,8 +69,7 @@ public class OrderIndexCreator implements Runnable{
 						
 						// orderId一定存在且为long
 						orderKV = kvMap.getKV(hashId);					
-						index = HashUtil.indexFor(
-								HashUtil.hashWithDistrub(hashId.equals("orderid") ? orderKV.valueAsLong() : orderKV.valueAsString()),
+						index = HashUtil.indexFor(hashId.equals("orderid") ? orderKV.valueAsLong() : orderKV.valueAsString(),
 								bucketSize);
 						
 						for(String e : identities) {
