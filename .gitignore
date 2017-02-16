@@ -6,5 +6,6 @@ src/test
 *.txt
 prerun_data/
 data/
+data2/
 query*/
 goods/
