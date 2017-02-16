@@ -21,6 +21,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 
+import com.alibaba.middleware.race.OrderSystem.Result;
 import com.alibaba.middleware.race.entity.KV;
 import com.alibaba.middleware.race.entity.ResultImpl;
 import com.alibaba.middleware.race.entity.Row;
@@ -173,11 +174,13 @@ public class OrderSystemImpl implements OrderSystem {
 			long start = System.currentTimeMillis();
 			List<String> keys = new ArrayList<>();
 			keys.add("address");
-			Iterator it = os.queryOrdersBySaler(salerid, goodid, keys);
+			Iterator<Result> it = os.queryOrdersBySaler(salerid, goodid, keys);
+			int count = 0;
 			while (it.hasNext()) {
 				it.next();
+				count++;
 			}
-			System.out.println(System.currentTimeMillis()-start);
+			System.out.println(System.currentTimeMillis()-start + "," +count);
 		}	
 		if (true){
 			long start = System.currentTimeMillis();
@@ -386,6 +389,7 @@ public class OrderSystemImpl implements OrderSystem {
 				System.out.println("query1 can't find order:");
 				return null;
 			}
+			//根据索引去原文件中寻找
 			String file = this.orderFiles.get(Integer.parseInt(indexArray[0]));
 			Long offset = Long.parseLong(indexArray[1]);
 			byte[] content = new byte[Integer.valueOf(indexArray[2])];
@@ -456,7 +460,6 @@ public class OrderSystemImpl implements OrderSystem {
 		} catch (IOException e) {
 			// 忽略
 		} 
-
 		return goodData;
 	}
 	
@@ -548,6 +551,13 @@ public class OrderSystemImpl implements OrderSystem {
 		return new HashSet<String>(keys);
 	}
 	
+	
+	/**
+	 * 将待查询的order记录按fileIndex和offset进行排序
+	 * 避免频繁开关文件和指针的大幅移动
+	 * @param offsetRecords
+	 * @return Map<key: fileIndex, value: queue of [offset, length]>
+	 */
 	private Map<String,PriorityQueue<String[]>> createOrderDataAccessSequence(Collection<String> offsetRecords) {
 		Map<String,PriorityQueue<String[]>> result = new HashMap<>(512);
 		for(String e : offsetRecords) {
@@ -563,14 +573,12 @@ public class OrderSystemImpl implements OrderSystem {
 				result.get(fileIndex).offer(offLenArray);
 			} else {
 				PriorityQueue<String[]> resultQueue = new PriorityQueue<>(50, new Comparator<String[]>() {
-
 					// 比较第一个String的大小即可
 					@Override
 					public int compare(String[] o1, String[] o2) {
 						// TODO Auto-generated method stub
 						return Long.parseLong(o1[0]) > Long.parseLong(o2[0])? 1 : -1 ;
 					}
-
 				});
 				resultQueue.offer(offLenArray);
 				result.put(fileIndex, resultQueue);
@@ -589,38 +597,30 @@ public class OrderSystemImpl implements OrderSystem {
 			}
 		}
 		
-		List<Row> buyerOrderResultList = new ArrayList<>(100);
-		
+		List<Row> buyerOrderResultList = new ArrayList<>(100);		
 		boolean validParameter = true;
 		
-		if (endTime <=0) {
+		if (endTime <=0) 
 			validParameter = false;
-		}
 		
-		if (endTime <= startTime) {
+		if (endTime <= startTime) 
 			validParameter = false;
-		}
 		
 		//线上测试得到有效订单的时间区间
-		if (startTime > 11668409867L) {
+		if (startTime > 11668409867L) 
 			validParameter = false;
-		}
 		
-		if (endTime <= 1468385553L ) {
+		if (endTime <= 1468385553L ) 
 			validParameter = false;
-		}
 	
 		if (validParameter) {
 			int index = HashUtil.indexFor(buyerid, CommonConstants.QUERY2_ORDER_SPLIT_SIZE);
-	//		
 			String indexFile = this.query2Path + File.separator + index + CommonConstants.INDEX_SUFFIX;
 						
-			// 一个用户的所有order信息 key为createtime;value为file offset length
+			// 一个用户的所有order信息 key为createtime，value为file offset length
 			List<String> buyerOrderList = new ArrayList<>(100);
-	
 			try (ExtendBufferedReader indexFileReader = IOUtils.createReader(indexFile, CommonConstants.INDEX_BLOCK_SIZE)){
 				String line = indexFileReader.readLine();
-				
 				while (line != null) {
 					// 获得一行中以<buyerid>开头的行
 					if (line.startsWith(buyerid)) {
@@ -630,43 +630,17 @@ public class OrderSystemImpl implements OrderSystem {
 						if (createTime >= startTime && createTime < endTime) {
 							buyerOrderList.add(line.substring(p + 1));
 						}
-						
 					}
 					line = indexFileReader.readLine();
 				}
 				
 				if (buyerOrderList.size() > 0) {
-//					System.out.println(buyerOrderList.size());
-//					Row kvMap;
 					Map<String,PriorityQueue<String[]>> buyerOrderAccessSequence = createOrderDataAccessSequence(buyerOrderList);
 					List<Future<List<Row>>> result = new ArrayList<>();
 					for (Map.Entry<String, PriorityQueue<String[]>> e : buyerOrderAccessSequence.entrySet()) {
-//						String file = this.orderFiles.get(Integer.parseInt(e.getKey()));
-//	//					System.out.println("file:"+file);
-//						String[] sequence;
-//						try(RandomAccessFile orderFileReader = new RandomAccessFile(file, "r")) {
-//							sequence = e.getValue().poll();
-//							while(sequence != null) {
-//								
-//								Long offset = Long.parseLong(sequence[0]);
-//	//							System.out.println("offset:"+offset);
-//	//							System.out.println("lenth:"+Integer.valueOf(sequence[1]));
-//								byte[] content = new byte[Integer.valueOf(sequence[1])];
-//								orderFileReader.seek(offset);
-//								orderFileReader.read(content);
-//								line = new String(content);
-//		
-//								kvMap = StringUtils.createKVMapFromLine(line, CommonConstants.SPLITTER);
-//								buyerOrderResultList.add(kvMap);
-////								buyerOrderQueue.offer(kvMap);
-//								sequence = e.getValue().poll();
-//							}
-//							
-//						} 
 						int fileIndex = Integer.parseInt(e.getKey());
 						OrderDataSearch search = new OrderDataSearch(fileIndex, e.getValue());
-						result.add(multiQueryPool2.submit(search));
-						
+						result.add(multiQueryPool2.submit(search));		
 					}
 					for (Future<List<Row>> f: result) {
 						try {
@@ -681,14 +655,7 @@ public class OrderSystemImpl implements OrderSystem {
 							e1.printStackTrace();
 						}
 					}
-	
-//					if (count % CommonConstants.QUERY_PRINT_COUNT == 0) {
-//						System.out.println("query2 original data time:" + (System.currentTimeMillis() - start) + "size:" + buyerOrderAccessSequence.size());
-//					}
-				} else {
-//					System.out.println("query2 can't find order:" + buyerid + "," + startTime + "," + endTime);
 				}
-	
 			} catch(IOException e) {
 				
 			}
@@ -696,7 +663,6 @@ public class OrderSystemImpl implements OrderSystem {
 		// query2需要join good信息
 		Row buyerRow = buyerOrderResultList.size() == 0 ? null : getBuyerRowFromOrderData(buyerOrderResultList.get(0));
 		Comparator<Row> comparator = new Comparator<Row>() {
-
 			@Override
 			public int compare(Row o1, Row o2) {
 				// TODO Auto-generated method stub
@@ -717,35 +683,9 @@ public class OrderSystemImpl implements OrderSystem {
 		};
 		JoinOne joinResult = new JoinOne(buyerOrderResultList, buyerRow, comparator, "goodid", null);
 		return joinResult;
-//		return new Iterator<OrderSystem.Result>() {
-//
-//			PriorityQueue<Row> o = buyerOrderQueue;
-//			Row buyerData = o.peek() == null ? null : getBuyerRowFromOrderData(o.peek());
-//
-//			public boolean hasNext() {
-//				return o != null && o.size() > 0;
-//			}
-//
-//			public Result next() {
-//				if (!hasNext()) {
-////					if (query2Count.get() % CommonConstants.QUERY_PRINT_COUNT ==0) {
-////						System.out.println("query2 time:"+ (System.currentTimeMillis() - start));
-////					}
-//					return null;
-//				}
-//				Row orderData = buyerOrderQueue.poll();
-//				Row goodData = getGoodRowFromOrderData(orderData);
-//				return ResultImpl.createResultRow(orderData, buyerData, goodData, null);
-//			}
-//
-//			public void remove() {
-//
-//			}
-//		};
 	}
 	/**
 	 * 用于0或者1次join时的简化操作
-	 * @author immortalCockRoach
 	 *
 	 */
 	private class JoinOne implements Iterator<OrderSystem.Result> {
@@ -754,26 +694,26 @@ public class OrderSystemImpl implements OrderSystem {
 		// orderQueue和joinDataQueue的排序比较器
 		private Comparator<Row> comparator;
 		private PriorityQueue<Row> orderQueue;
-		private Map<String, Row> joinDataMap;
-		private Set<String> joinDataIndexSet;
+		private Map<String, Row> joinDataMap;	//join后的buyer(good)信息
+		private Set<String> joinDataIndexSet;	//需要join的buyer(good) index
 		// "buyerid" 或者"goodid" null表示不需要join
-		String joinId;
+		String joinTable;
 		Collection<String> queryKeys;
-		public JoinOne(List<Row> orderRows,Row fixRow,Comparator<Row> comparator, String joinId, Collection<String> queryKeys) {
+		public JoinOne(List<Row> orderRows,Row fixRow,Comparator<Row> comparator, String joinTable, Collection<String> queryKeys) {
 			this.orderRows = orderRows;
 			this.fixRow = fixRow;
 			this.comparator = comparator;
-			this.joinId = joinId;
+			this.joinTable = joinTable;
 			this.queryKeys = queryKeys;
 			this.orderQueue = new PriorityQueue<>(512, comparator);
 			for (Row orderRow : orderRows) {
 				orderQueue.offer(orderRow);
 			}
-			// 读取不同的good(buyer)Id 查找Row(不论是从cache还是通过memoryMap的索引去原始文件查找)组成一个map供之后join
-			// 当orderRow为空或者query3最后得到的tag为order或者good的时候 不需要查询join
-			if (joinId != null && orderRows.size() > 0) {
-				joinDataIndexSet = new HashSet<>(512);
-				joinDataMap = new HashMap<>(512);
+			// 读取不同的good(buyer)Id, 查找Row组成一个map供之后join
+			// 当orderRow为空或者query3最后得到的tag为order或者good的时候,不需要查询join
+			if (joinTable != null && orderRows.size() > 0) {
+				joinDataIndexSet = new HashSet<>(128);
+				joinDataMap = new HashMap<>(64);
 				getUniqueDataIndex();
 				// 当有没有现成的Row的时候
 				if(joinDataIndexSet.size() > 0) {
@@ -782,21 +722,18 @@ public class OrderSystemImpl implements OrderSystem {
 			}
 		}
 		/**
-		 * 根据orderRow的信息查找出无重复的，且不在cache中的good/buyer的index信息
-		 * 如果已经在cache中 直接放入Map
+		 * 多个order可能对应同一个good或buyer
+		 * 根据orderRow的信息查找出无重复的good/buyer的index信息
 		 */
 		private void getUniqueDataIndex() {
-			// 首先尽量从cache中取Row 如果没有的话再去memoryMap中查找
 			for (Row orderRow : orderRows) {
-				String id = orderRow.getKV(joinId).valueAsString();
+				String id = orderRow.getKV(joinTable).valueAsString();
 				// 已经Map包含这个Row了就跳过
-				if (!joinDataMap.containsKey(joinId)) {
-					if (!joinDataIndexSet.contains(id)) {
-						if (joinId.equals("buyerid")) {
-							joinDataIndexSet.add(buyerMemoryIndexMap.get(id));
-						} else {
-							joinDataIndexSet.add(goodMemoryIndexMap.get(id));
-						}
+				if (!joinDataMap.containsKey(id)) {
+					if (joinTable.equals("buyerid")) {
+						joinDataIndexSet.add(buyerMemoryIndexMap.get(id));
+					} else {
+						joinDataIndexSet.add(goodMemoryIndexMap.get(id));
 					}
 				}
 			}
@@ -807,7 +744,7 @@ public class OrderSystemImpl implements OrderSystem {
 			Map<String,PriorityQueue<String[]>> originalDataAccessSequence = createOrderDataAccessSequence(joinDataIndexSet);
 			for (Map.Entry<String, PriorityQueue<String[]>> e : originalDataAccessSequence.entrySet()) {
 				String file = null;
-				if (joinId.equals("buyerid")) {
+				if (joinTable.equals("buyerid")) {
 					file = buyerFiles.get(Integer.parseInt(e.getKey()));
 				} else {
 					file = goodFiles.get(Integer.parseInt(e.getKey()));
@@ -817,7 +754,6 @@ public class OrderSystemImpl implements OrderSystem {
 				try(RandomAccessFile orderFileReader = new RandomAccessFile(file, "r")) {
 					sequence = e.getValue().poll();
 					while(sequence != null) {
-						
 						Long offset = Long.parseLong(sequence[0]);
 						byte[] content = new byte[Integer.valueOf(sequence[1])];
 						orderFileReader.seek(offset);
@@ -825,7 +761,7 @@ public class OrderSystemImpl implements OrderSystem {
 						line = new String(content);
 
 						Row kvMap = StringUtils.createKVMapFromLine(line, CommonConstants.SPLITTER);
-						if (joinId.equals("buyerid")) {
+						if (joinTable.equals("buyerid")) {
 							String id = kvMap.getKV("buyerid").valueAsString();
 							joinDataMap.put(id, kvMap);
 						} else {
@@ -851,24 +787,26 @@ public class OrderSystemImpl implements OrderSystem {
 				return null;
 			}
 			// 不需要join的时候直接create
-			if (joinId == null){
+			if (joinTable == null){
 				return ResultImpl.createResultRow(orderQueue.poll(), fixRow, null, createQueryKeys(queryKeys));
 			} else {
 				// 需要join的时候从Map中拉取
 				Row orderRow = orderQueue.poll();
-				Row dataRow = joinDataMap.get(orderRow.getKV(joinId).valueAsString());
+				Row dataRow = joinDataMap.get(orderRow.getKV(joinTable).valueAsString());
 				return ResultImpl.createResultRow(orderRow, fixRow, dataRow, createQueryKeys(queryKeys));
 			}	
 		}
-
 		@Override
 		public void remove() {
 			// TODO Auto-generated method stub	
 		}
 	}
 	
+	
+	/**
+	 * 针对query 2,3,4的多线程order查询任务
+	 */
 	private class OrderDataSearch implements Callable<List<Row>> {
-		
 		private int fileIndex;
 		private PriorityQueue<String[]> sequenceQueue;
 		
@@ -881,7 +819,6 @@ public class OrderSystemImpl implements OrderSystem {
 			// 这个sequence不可能是负数
 			List<Row> result = new ArrayList<>(sequenceQueue.size());
 			String file = orderFiles.get(fileIndex);
-//			System.out.println("file:"+file);
 			String[] sequence;
 			try(RandomAccessFile orderFileReader = new RandomAccessFile(file, "r")) {
 				sequence = sequenceQueue.poll();
@@ -891,11 +828,9 @@ public class OrderSystemImpl implements OrderSystem {
 					orderFileReader.seek(offset);
 					orderFileReader.read(content);
 					String line = new String(content);
-
 					Row kvMap = StringUtils.createKVMapFromLine(line, CommonConstants.SPLITTER);
 					// buyer的话需要join
 					result.add(kvMap);
-//					salerGoodsQueue.offer(kvMap);
 					sequence = sequenceQueue.poll();
 				}
 			} 	
@@ -912,26 +847,9 @@ public class OrderSystemImpl implements OrderSystem {
 				e.printStackTrace();
 			}
 		}
-//		final long start = System.currentTimeMillis();
-//		int count = query3Count.incrementAndGet();
-//		if (count % CommonConstants.QUERY_PRINT_COUNT == 0) {
-//			System.out.println("query3 count:" + query3Count.get());
-//		}
 		String tag = keys != null && keys.size() == 1 ? getKeyJoin((String)keys.toArray()[0]): "all";
-//		final PriorityQueue<Row> salerGoodsQueue = new PriorityQueue<>(512, new Comparator<Row>() {
-//
-//			@Override
-//			public int compare(Row o1, Row o2) {
-//				// TODO Auto-generated method stub
-//				long o2Time;
-//				long o1Time;
-//				o1Time = o1.get("orderid").longValue;
-//				o2Time = o2.get("orderid").longValue;
-//				return o1Time - o2Time > 0 ? 1 : -1;
-//			}
-//
-//		});
-		List<Row> salerGoodsList = new ArrayList<>(512);
+
+		List<Row> salerGoodOrders = new ArrayList<>(512);
 		final Collection<String> queryKeys = keys;
 
 		int index = HashUtil.indexFor(goodid, CommonConstants.QUERY3_ORDER_SPLIT_SIZE);
@@ -939,7 +857,6 @@ public class OrderSystemImpl implements OrderSystem {
 		List<String> offsetRecords = new ArrayList<>(512);
 		try (ExtendBufferedReader indexFileReader = IOUtils.createReader(indexFile, CommonConstants.INDEX_BLOCK_SIZE)){
 			String line = indexFileReader.readLine();
-			
 			while (line != null) {
 				// 获得一行中以<goodid>开头的行
 				if (line.startsWith(goodid)) {
@@ -948,39 +865,11 @@ public class OrderSystemImpl implements OrderSystem {
 				}
 				line = indexFileReader.readLine();
 			}
-//			if (count % CommonConstants.QUERY_PRINT_COUNT == 0) {
-//				System.out.println("query3 index time:" + (System.currentTimeMillis() - start) + "size:" +offsetRecords.size());
-//			}
-			
+			 
 			if (offsetRecords.size() > 0 ) {
-//				System.out.println(offsetRecords.size());
-//				Row kvMap;
 				Map<String,PriorityQueue<String[]>> buyerOrderAccessSequence = createOrderDataAccessSequence(offsetRecords);
 				List<Future<List<Row>>> result = new ArrayList<>();
 				for (Map.Entry<String, PriorityQueue<String[]>> e : buyerOrderAccessSequence.entrySet()) {
-//					String file = this.orderFiles.get(Integer.parseInt(e.getKey()));
-////					System.out.println("file:"+file);
-//					String[] sequence;
-//					try(RandomAccessFile orderFileReader = new RandomAccessFile(file, "r")) {
-//						sequence = e.getValue().poll();
-//						while(sequence != null) {
-//							
-//							Long offset = Long.parseLong(sequence[0]);
-////							System.out.println("offset:"+offset);
-////							System.out.println("lenth:"+Integer.valueOf(sequence[1]));
-//							byte[] content = new byte[Integer.valueOf(sequence[1])];
-//							orderFileReader.seek(offset);
-//							orderFileReader.read(content);
-//							line = new String(content);
-//	
-//							kvMap = StringUtils.createKVMapFromLine(line, CommonConstants.SPLITTER);
-//							// buyer的话需要join
-//							salerGoodsList.add(kvMap);
-////							salerGoodsQueue.offer(kvMap);
-//							sequence = e.getValue().poll();
-//						}
-//						
-//					} 
 					int fileIndex = Integer.parseInt(e.getKey());
 					OrderDataSearch search = new OrderDataSearch(fileIndex, e.getValue());
 					result.add(multiQueryPool3.submit(search));
@@ -990,7 +879,7 @@ public class OrderSystemImpl implements OrderSystem {
 						List<Row> list = f.get();
 						if (list != null) {
 							for(Row row : list) {
-								salerGoodsList.add(row);
+								salerGoodOrders.add(row);
 							}
 						}
 					} catch (InterruptedException | ExecutionException e1) {
@@ -999,70 +888,37 @@ public class OrderSystemImpl implements OrderSystem {
 					}
 				}
 			} else {
-				System.out.println("query3 can't find order:");
+				System.out.println("query3 can't find order.");
 			}
-
 		} catch (IOException e) {
-			
 		}
 		
 		// query3至多只需要join buyer信息
-		Row goodRow = salerGoodsList.size() == 0 ? null : getGoodRowFromOrderData(salerGoodsList.get(0));
+		Row goodRow = salerGoodOrders.size() == 0 ? null : getGoodRowFromOrderData(salerGoodOrders.get(0));
 		Comparator<Row> comparator = new Comparator<Row>() {
-
 			@Override
 			public int compare(Row o1, Row o2) {
 				// TODO Auto-generated method stub
-				long o2Time = 0L;
-				long o1Time = 0L;			
+				long o2ID = 0L;
+				long o1ID = 0L;			
 				try {
-					o1Time = o1.get("orderid").valueAsLong();
-					o2Time = o2.get("orderid").valueAsLong();
+					o1ID = o1.get("orderid").valueAsLong();
+					o2ID = o2.get("orderid").valueAsLong();
 				} catch (TypeException e) {
 					// TODO Auto-generated catch block
 					System.out.println("Catch type error");
 					e.printStackTrace();
 				}
-				return o1Time - o2Time > 0 ? 1 : -1;
+				return o1ID - o2ID > 0 ? 1 : -1;
 			}
-
 		};
 //		 查询3可能不需要join的buyer
 		String joinTable = tag.equals("buyer") || tag.equals("all") ? "buyerid" : null;
-		JoinOne joinResult = new JoinOne(salerGoodsList, goodRow, comparator, joinTable, createQueryKeys(queryKeys));
+		JoinOne joinResult = new JoinOne(salerGoodOrders, goodRow, comparator, joinTable, createQueryKeys(queryKeys));
 		return joinResult;
-//		return new Iterator<OrderSystem.Result>() {
-//
-//			final PriorityQueue<Row> o = salerGoodsQueue;
-//			// 使用orderData(任意一个都对应同一个good信息)去查找对应的goodData
-//			final Row goodData = o.peek() == null ? null : getGoodRowFromOrderData(o.peek());
-//			final String tag = queryKeys != null && queryKeys.size() == 1 ? getKeyJoin((String)(queryKeys.toArray()[0])) : "all";
-//			public boolean hasNext() {
-//				return o != null && o.size() > 0;
-//			}
-//
-//			public Result next() {
-//				if (!hasNext()) {
-//
-//					return null;
-//				}
-//				Row orderData = o.poll();
-//				Row buyerData = null;
-//				// 当时all或者buyer的时候才去join buyer
-//				if (tag.equals("buyer") || tag.equals("all")) {
-////					System.out.println("join");
-//					buyerData = getBuyerRowFromOrderData(orderData);
-//				}
-//				// 由于此时不需要join buyer 因此为null
-//				return ResultImpl.createResultRow(orderData, buyerData, goodData, createQueryKeys(queryKeys));
-//			}
-//
-//			public void remove() {
-//				// ignore
-//			}
-//		};
 	}
 
+	
 	public KeyValue sumOrdersByGood(String goodid, String key) {
 		while (this.isConstructed == false) {
 			try {
@@ -1072,11 +928,6 @@ public class OrderSystemImpl implements OrderSystem {
 				e.printStackTrace();
 			}
 		}
-//		long start = System.currentTimeMillis();
-//		int count = query4Count.incrementAndGet();
-//		if (count % CommonConstants.QUERY_PRINT_COUNT == 0) {
-//			System.out.println("query4 count:" + query4Count.get());	
-//		}
 		// 快速处理 减少不必要的查询的join开销
 		String tag = "all";
 		// 当为good表字段时快速处理
@@ -1093,7 +944,6 @@ public class OrderSystemImpl implements OrderSystem {
 		
 		List<Row> ordersData = new ArrayList<>(512);
 		
-
 		int index = HashUtil.indexFor(goodid, CommonConstants.QUERY3_ORDER_SPLIT_SIZE);
 		String indexFile = this.query3Path + File.separator + index + CommonConstants.INDEX_SUFFIX;
 //			cachedStrings = new ArrayList<>(100);
@@ -1110,36 +960,11 @@ public class OrderSystemImpl implements OrderSystem {
 				}
 				line = indexFileReader.readLine();
 			}
-//			if (count % CommonConstants.QUERY_PRINT_COUNT ==0) {
-//				System.out.println("query4 index time:"+ (System.currentTimeMillis() - start) + "size:" + offsetRecords.size());
-//			}
 			
 			if (offsetRecords.size() > 0 ) {
-//				System.out.println(offsetRecords.size());
-//				Row kvMap;
 				Map<String,PriorityQueue<String[]>> buyerOrderAccessSequence = createOrderDataAccessSequence(offsetRecords);
 				List<Future<List<Row>>> result = new ArrayList<>();
 				for (Map.Entry<String, PriorityQueue<String[]>> e : buyerOrderAccessSequence.entrySet()) {
-//					String file = this.orderFiles.get(Integer.parseInt(e.getKey()));
-////					System.out.println("file:"+file);
-//					String[] sequence;
-//					try(RandomAccessFile orderFileReader = new RandomAccessFile(file, "r")) {
-//						sequence = e.getValue().poll();
-//						while(sequence != null) {
-//							
-//							Long offset = Long.parseLong(sequence[0]);
-//
-//							byte[] content = new byte[Integer.valueOf(sequence[1])];
-//							orderFileReader.seek(offset);
-//							orderFileReader.read(content);
-//							line = new String(content);
-//	
-//							kvMap = StringUtils.createKVMapFromLine(line, CommonConstants.SPLITTER);
-//							ordersData.add(kvMap);
-//							sequence = e.getValue().poll();
-//						}
-//						
-//					}
 					int fileIndex = Integer.parseInt(e.getKey());
 					OrderDataSearch search = new OrderDataSearch(fileIndex, e.getValue());
 					result.add(multiQueryPool4.submit(search));
@@ -1160,7 +985,6 @@ public class OrderSystemImpl implements OrderSystem {
 			} else {
 				System.out.println("query4 can't find order:");
 			}
-			
 		} catch (IOException e) {
 			
 		}
