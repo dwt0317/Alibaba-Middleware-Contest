@@ -1,4 +1,4 @@
-package com.alibaba.middleware.race.index;
+package com.alibaba.middleware.race.construct;
 
 import java.io.IOException;
 import java.util.Collection;

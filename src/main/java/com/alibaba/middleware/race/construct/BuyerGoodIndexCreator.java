@@ -1,4 +1,4 @@
-package com.alibaba.middleware.race.index;
+package com.alibaba.middleware.race.construct;
 
 import java.io.IOException;
 import java.util.Collection;
@@ -27,15 +27,15 @@ public class BuyerGoodIndexCreator implements Runnable {
 	private HashMap<String,String> goodMemoryIndexMap; 
 	private HashMap<String,String> buyerMemoryIndexMap;
 	
-	public BuyerGoodIndexCreator(String hashId, Collection<String> files, int blockSize, CountDownLatch latch, BuyerGoodIndexHandler bgHandler) {
+	public BuyerGoodIndexCreator(String hashId, Collection<String> files, int blockSize, CountDownLatch latch) {
 		super();
 		this.latch = latch;
 		this.hashId = hashId;
 		this.files = files;
 		this.blockSize = blockSize;
 		this.bufferArray = new IndexBuffer[CommonConstants.INDEX_BUFFER_SIZE];
-		this.goodMemoryIndexMap = bgHandler.getGoodMemoryIndexMap();
-		this.buyerMemoryIndexMap = bgHandler.getBuyerMemoryIndexMap();
+		this.goodMemoryIndexMap = Globals.getGoodMemoryIndexMap();
+		this.buyerMemoryIndexMap = Globals.getBuyerMemoryIndexMap();
 	}
 
 	@Override

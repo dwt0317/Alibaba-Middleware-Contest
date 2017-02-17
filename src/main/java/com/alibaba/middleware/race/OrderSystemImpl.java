@@ -22,12 +22,15 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 
 import com.alibaba.middleware.race.OrderSystem.Result;
+import com.alibaba.middleware.race.construct.BuyerGoodIndexCreator;
+import com.alibaba.middleware.race.construct.BuyerGoodIndexHandler;
+import com.alibaba.middleware.race.construct.Globals;
+import com.alibaba.middleware.race.construct.OrderIndexCreator;
 import com.alibaba.middleware.race.entity.KV;
 import com.alibaba.middleware.race.entity.ResultImpl;
 import com.alibaba.middleware.race.entity.Row;
-import com.alibaba.middleware.race.index.BuyerGoodIndexCreator;
-import com.alibaba.middleware.race.index.BuyerGoodIndexHandler;
-import com.alibaba.middleware.race.index.OrderIndexCreator;
+import com.alibaba.middleware.race.query.CallableOrderDataSearch;
+import com.alibaba.middleware.race.query.MultipleJoin;
 import com.alibaba.middleware.race.utils.CommonConstants;
 import com.alibaba.middleware.race.utils.ExtendBufferedReader;
 import com.alibaba.middleware.race.utils.ExtendBufferedWriter;
@@ -42,18 +45,6 @@ import com.alibaba.middleware.race.utils.StringUtils;
  *
  */
 public class OrderSystemImpl implements OrderSystem {
-
-	private List<String> orderFiles;
-	private List<String> goodFiles;
-	private List<String> buyerFiles;
-	
-	private String query1Path;
-	private String query2Path;
-	private String query3Path;
-
-	private ExecutorService multiQueryPool2;
-	private ExecutorService multiQueryPool3;
-	private ExecutorService multiQueryPool4;
 	
 	/**
 	 * 这个数据记录每个文件的行当前写入的record数量，当大于INDEX_LINE_RECORDS的时候，换行
@@ -67,33 +58,25 @@ public class OrderSystemImpl implements OrderSystem {
 	private int[] query3LineRecords;
 	private ExtendBufferedWriter[] query3IndexWriters;
 	
-	private HashMap<String,String> buyerMemoryIndexMap;
-	
-	private HashMap<String,String> goodMemoryIndexMap; 
- 
-	private BuyerGoodIndexHandler bgHandler;
-	
 	private volatile boolean isConstructed;
 
 	
 	/**
 	 * 根据参数新建新建文件 目录等操作
 	 */
-	public OrderSystemImpl() {
-		bgHandler = new BuyerGoodIndexHandler();
-			
+	public OrderSystemImpl() {			
 		this.query1LineRecords = new int[CommonConstants.QUERY1_ORDER_SPLIT_SIZE];
 		this.query2LineRecords = new int[CommonConstants.QUERY2_ORDER_SPLIT_SIZE];
 		this.query3LineRecords = new int[CommonConstants.QUERY3_ORDER_SPLIT_SIZE];
 		
-		this.goodMemoryIndexMap = bgHandler.getGoodMemoryIndexMap();	
-		this.buyerMemoryIndexMap = bgHandler.getBuyerMemoryIndexMap();
+		Globals.goodMemoryIndexMap = new HashMap<>(4194304, 1f);	//测试得到good的数目为4194304
+		Globals.buyerMemoryIndexMap = new HashMap<>(8388608, 1f);
 
 		this.isConstructed = false;
 		
-		this.multiQueryPool2 = Executors.newFixedThreadPool(8);
-		this.multiQueryPool3 = Executors.newFixedThreadPool(8);
-		this.multiQueryPool4 = Executors.newFixedThreadPool(8);
+		Globals.multiQueryPool2 = Executors.newFixedThreadPool(8);
+		Globals.multiQueryPool3 = Executors.newFixedThreadPool(8);
+		Globals.multiQueryPool4 = Executors.newFixedThreadPool(8);
 	}
 
 	public static void main(String[] args) throws IOException, InterruptedException {
@@ -215,9 +198,9 @@ public class OrderSystemImpl implements OrderSystem {
 
 	public void construct(Collection<String> orderFiles, Collection<String> buyerFiles, Collection<String> goodFiles,
 			Collection<String> storeFolders) throws IOException, InterruptedException {	
-		this.orderFiles = new ArrayList<>(orderFiles);
-		this.buyerFiles = new ArrayList<>(buyerFiles);
-		this.goodFiles = new ArrayList<>(goodFiles);
+		Globals.orderFiles = new ArrayList<>(orderFiles);
+		Globals.buyerFiles = new ArrayList<>(buyerFiles);
+		Globals.goodFiles = new ArrayList<>(goodFiles);
 		long start = System.currentTimeMillis();
 		constructDir(storeFolders);
 		final long dir = System.currentTimeMillis();
@@ -252,15 +235,15 @@ public class OrderSystemImpl implements OrderSystem {
 	private void constructHashIndex() {
 		// 5个线程各自完成之后 该函数才能返回
 		CountDownLatch latch = new CountDownLatch(5);
-		new Thread(new OrderIndexCreator("orderid", query1IndexWriters, query1LineRecords,orderFiles, CommonConstants.QUERY1_ORDER_SPLIT_SIZE,
+		new Thread(new OrderIndexCreator("orderid", query1IndexWriters, query1LineRecords,Globals.orderFiles, CommonConstants.QUERY1_ORDER_SPLIT_SIZE,
 				CommonConstants.ORDERFILE_BLOCK_SIZE, latch,new String[]{"orderid"})).start();
-		new Thread(new OrderIndexCreator("buyerid", query2IndexWriters, query2LineRecords, orderFiles, CommonConstants.QUERY2_ORDER_SPLIT_SIZE,
+		new Thread(new OrderIndexCreator("buyerid", query2IndexWriters, query2LineRecords, Globals.orderFiles, CommonConstants.QUERY2_ORDER_SPLIT_SIZE,
 				CommonConstants.ORDERFILE_BLOCK_SIZE, latch,new String[]{"buyerid","createtime"})).start();
-		new Thread(new OrderIndexCreator("goodid", query3IndexWriters, query3LineRecords ,orderFiles, CommonConstants.QUERY3_ORDER_SPLIT_SIZE,
+		new Thread(new OrderIndexCreator("goodid", query3IndexWriters, query3LineRecords ,Globals.orderFiles, CommonConstants.QUERY3_ORDER_SPLIT_SIZE,
 				CommonConstants.ORDERFILE_BLOCK_SIZE, latch, new String[]{"goodid"})).start();
 
-		new Thread(new BuyerGoodIndexCreator("buyerid" ,buyerFiles, CommonConstants.OTHERFILE_BLOCK_SIZE, latch, bgHandler)).start();
-		new Thread(new BuyerGoodIndexCreator("goodid", goodFiles, CommonConstants.OTHERFILE_BLOCK_SIZE, latch, bgHandler)).start();
+		new Thread(new BuyerGoodIndexCreator("buyerid" ,Globals.buyerFiles, CommonConstants.OTHERFILE_BLOCK_SIZE, latch)).start();
+		new Thread(new BuyerGoodIndexCreator("goodid", Globals.goodFiles, CommonConstants.OTHERFILE_BLOCK_SIZE, latch)).start();
 		
 		try {
 			latch.await();
@@ -281,7 +264,7 @@ public class OrderSystemImpl implements OrderSystem {
 		this.query1IndexWriters = new ExtendBufferedWriter[CommonConstants.QUERY1_ORDER_SPLIT_SIZE];
 		for (int i = 0; i < CommonConstants.QUERY1_ORDER_SPLIT_SIZE; i++) {
 			try {
-				String file = this.query1Path + File.separator + i + CommonConstants.INDEX_SUFFIX;
+				String file = Globals.query1Path + File.separator + i + CommonConstants.INDEX_SUFFIX;
 				RandomAccessFile ran = new RandomAccessFile(file, "rw");
 				ran.setLength(1024 * 1024 * 80);
 				ran.close();
@@ -294,7 +277,7 @@ public class OrderSystemImpl implements OrderSystem {
 		this.query2IndexWriters = new ExtendBufferedWriter[CommonConstants.QUERY2_ORDER_SPLIT_SIZE];
 		for (int i = 0; i < CommonConstants.QUERY2_ORDER_SPLIT_SIZE; i++) {
 			try {
-				String file = this.query2Path + File.separator + i + CommonConstants.INDEX_SUFFIX;
+				String file = Globals.query2Path + File.separator + i + CommonConstants.INDEX_SUFFIX;
 				RandomAccessFile ran = new RandomAccessFile(file, "rw");
 				ran.setLength(1024 * 1024 * 80);
 				ran.close();
@@ -307,7 +290,7 @@ public class OrderSystemImpl implements OrderSystem {
 		this.query3IndexWriters = new ExtendBufferedWriter[CommonConstants.QUERY3_ORDER_SPLIT_SIZE];
 		for (int i = 0; i < CommonConstants.QUERY3_ORDER_SPLIT_SIZE; i++) {
 			try {
-				String file = this.query3Path + File.separator + i + CommonConstants.INDEX_SUFFIX;
+				String file = Globals.query3Path + File.separator + i + CommonConstants.INDEX_SUFFIX;
 				RandomAccessFile ran = new RandomAccessFile(file, "rw");
 				ran.setLength(1024 * 1024 * 80);
 				ran.close();
@@ -329,24 +312,24 @@ public class OrderSystemImpl implements OrderSystem {
 		int len = storeFoldersList.size();
 		int storeIndex = 0;
 
-		this.query1Path = storeFoldersList.get(storeIndex) + File.separator + CommonConstants.QUERY1_PREFIX;
-		File query1File = new File(query1Path);
+		Globals.query1Path = storeFoldersList.get(storeIndex) + File.separator + CommonConstants.QUERY1_PREFIX;
+		File query1File = new File(Globals.query1Path);
 		if (!query1File.exists()) {
 			query1File.mkdirs();
 		}
 		storeIndex++;
 		storeIndex %= len;
 
-		this.query2Path = storeFoldersList.get(storeIndex) + File.separator + CommonConstants.QUERY2_PREFIX;
-		File query2File = new File(query2Path);
+		Globals.query2Path = storeFoldersList.get(storeIndex) + File.separator + CommonConstants.QUERY2_PREFIX;
+		File query2File = new File(Globals.query2Path);
 		if (!query2File.exists()) {
 			query2File.mkdirs();
 		}
 		storeIndex++;
 		storeIndex %= len;
 
-		this.query3Path = storeFoldersList.get(storeIndex) + File.separator + CommonConstants.QUERY3_PREFIX;
-		File query3File = new File(query3Path);
+		Globals.query3Path = storeFoldersList.get(storeIndex) + File.separator + CommonConstants.QUERY3_PREFIX;
+		File query3File = new File(Globals.query3Path);
 		if (!query3File.exists()) {
 			query3File.mkdirs();
 		}
@@ -369,7 +352,7 @@ public class OrderSystemImpl implements OrderSystem {
 
 		Row orderData = null;	//query result
 		int index = HashUtil.indexFor(orderId, CommonConstants.QUERY1_ORDER_SPLIT_SIZE);
-		String indexFile = this.query1Path + File.separator + index + CommonConstants.INDEX_SUFFIX;
+		String indexFile = Globals.getQuery1Path() + File.separator + index + CommonConstants.INDEX_SUFFIX;
 		
 		String[] indexArray = null;
 		try (ExtendBufferedReader indexFileReader = IOUtils.createReader(indexFile, CommonConstants.INDEX_BLOCK_SIZE)){
@@ -390,7 +373,7 @@ public class OrderSystemImpl implements OrderSystem {
 				return null;
 			}
 			//根据索引去原文件中寻找
-			String file = this.orderFiles.get(Integer.parseInt(indexArray[0]));
+			String file = Globals.getOrderFiles().get(Integer.parseInt(indexArray[0]));
 			Long offset = Long.parseLong(indexArray[1]);
 			byte[] content = new byte[Integer.valueOf(indexArray[2])];
 			try (RandomAccessFile orderFileReader = new RandomAccessFile(file, "r")) {
@@ -440,7 +423,7 @@ public class OrderSystemImpl implements OrderSystem {
 		String goodId = orderData.getKV("goodid").valueAsString();
 
 		String[] indexArray = null;
-		String line = this.goodMemoryIndexMap.get(goodId);
+		String line = Globals.getGoodMemoryIndexMap().get(goodId);
 		if (line != null) {
 			indexArray = StringUtils.getIndexInfo(line);
 		}
@@ -449,7 +432,7 @@ public class OrderSystemImpl implements OrderSystem {
 		if (indexArray == null) {
 			return null;
 		}
-		String file = this.goodFiles.get(Integer.parseInt(indexArray[0]));
+		String file = Globals.getGoodFiles().get(Integer.parseInt(indexArray[0]));
 		Long offset = Long.parseLong(indexArray[1]);
 		byte[] content = new byte[Integer.valueOf(indexArray[2])];
 		try (RandomAccessFile goodFileReader = new RandomAccessFile(file, "r")) {
@@ -467,11 +450,11 @@ public class OrderSystemImpl implements OrderSystem {
 		Row buyerData = null;		
 		String buyerId = orderData.getKV("buyerid").valueAsString();
 		String[] indexArray = null;
-		String line = this.buyerMemoryIndexMap.get(buyerId);
+		String line = Globals.getBuyerMemoryIndexMap().get(buyerId);
 		if (line != null) {
 			indexArray = StringUtils.getIndexInfo(line);
 		}
-		String file = this.buyerFiles.get(Integer.parseInt(indexArray[0]));
+		String file = Globals.getBuyerFiles().get(Integer.parseInt(indexArray[0]));
 		Long offset = Long.parseLong(indexArray[1]);
 		byte[] content = new byte[Integer.valueOf(indexArray[2])];
 		try (RandomAccessFile buyerFileReader = new RandomAccessFile(file, "r")) {
@@ -486,7 +469,6 @@ public class OrderSystemImpl implements OrderSystem {
 	}
 	/**
 	 * join操作，根据order订单中的buyerid和goodid进行join
-	 * 
 	 * @param orderData
 	 * @param keys
 	 * @return
@@ -597,7 +579,7 @@ public class OrderSystemImpl implements OrderSystem {
 			}
 		}
 		
-		List<Row> buyerOrderResultList = new ArrayList<>(100);		
+		List<Row> buyerOrdersData = new ArrayList<>(100);		
 		boolean validParameter = true;
 		
 		if (endTime <=0) 
@@ -615,9 +597,9 @@ public class OrderSystemImpl implements OrderSystem {
 	
 		if (validParameter) {
 			int index = HashUtil.indexFor(buyerid, CommonConstants.QUERY2_ORDER_SPLIT_SIZE);
-			String indexFile = this.query2Path + File.separator + index + CommonConstants.INDEX_SUFFIX;
+			String indexFile = Globals.getQuery2Path() + File.separator + index + CommonConstants.INDEX_SUFFIX;
 						
-			// 一个用户的所有order信息 key为createtime，value为file offset length
+			// query2的order索引中，key为id+createtime，value为file offset length
 			List<String> buyerOrderList = new ArrayList<>(100);
 			try (ExtendBufferedReader indexFileReader = IOUtils.createReader(indexFile, CommonConstants.INDEX_BLOCK_SIZE)){
 				String line = indexFileReader.readLine();
@@ -639,15 +621,15 @@ public class OrderSystemImpl implements OrderSystem {
 					List<Future<List<Row>>> result = new ArrayList<>();
 					for (Map.Entry<String, PriorityQueue<String[]>> e : buyerOrderAccessSequence.entrySet()) {
 						int fileIndex = Integer.parseInt(e.getKey());
-						OrderDataSearch search = new OrderDataSearch(fileIndex, e.getValue());
-						result.add(multiQueryPool2.submit(search));		
+						CallableOrderDataSearch search = new CallableOrderDataSearch(fileIndex, e.getValue());
+						result.add(Globals.getMultiQueryPool2().submit(search));		
 					}
 					for (Future<List<Row>> f: result) {
 						try {
 							List<Row> list = f.get();
 							if (list != null) {
 								for(Row row : list) {
-									buyerOrderResultList.add(row);
+									buyerOrdersData.add(row);
 								}
 							}
 						} catch (InterruptedException | ExecutionException e1) {
@@ -661,7 +643,7 @@ public class OrderSystemImpl implements OrderSystem {
 			}
 		}
 		// query2需要join good信息
-		Row buyerRow = buyerOrderResultList.size() == 0 ? null : getBuyerRowFromOrderData(buyerOrderResultList.get(0));
+		Row buyerRow = buyerOrdersData.size() == 0 ? null : getBuyerRowFromOrderData(buyerOrdersData.get(0));
 		Comparator<Row> comparator = new Comparator<Row>() {
 			@Override
 			public int compare(Row o1, Row o2) {
@@ -681,162 +663,11 @@ public class OrderSystemImpl implements OrderSystem {
 			}
 
 		};
-		JoinOne joinResult = new JoinOne(buyerOrderResultList, buyerRow, comparator, "goodid", null);
+		MultipleJoin joinResult = new MultipleJoin(buyerOrdersData, buyerRow, comparator, "goodid", null);
 		return joinResult;
 	}
-	/**
-	 * 用于0或者1次join时的简化操作
-	 *
-	 */
-	private class JoinOne implements Iterator<OrderSystem.Result> {
-		private List<Row> orderRows;
-		private Row fixRow;
-		// orderQueue和joinDataQueue的排序比较器
-		private Comparator<Row> comparator;
-		private PriorityQueue<Row> orderQueue;
-		private Map<String, Row> joinDataMap;	//join后的buyer(good)信息
-		private Set<String> joinDataIndexSet;	//需要join的buyer(good) index
-		// "buyerid" 或者"goodid" null表示不需要join
-		String joinTable;
-		Collection<String> queryKeys;
-		public JoinOne(List<Row> orderRows,Row fixRow,Comparator<Row> comparator, String joinTable, Collection<String> queryKeys) {
-			this.orderRows = orderRows;
-			this.fixRow = fixRow;
-			this.comparator = comparator;
-			this.joinTable = joinTable;
-			this.queryKeys = queryKeys;
-			this.orderQueue = new PriorityQueue<>(512, comparator);
-			for (Row orderRow : orderRows) {
-				orderQueue.offer(orderRow);
-			}
-			// 读取不同的good(buyer)Id, 查找Row组成一个map供之后join
-			// 当orderRow为空或者query3最后得到的tag为order或者good的时候,不需要查询join
-			if (joinTable != null && orderRows.size() > 0) {
-				joinDataIndexSet = new HashSet<>(128);
-				joinDataMap = new HashMap<>(64);
-				getUniqueDataIndex();
-				// 当有没有现成的Row的时候
-				if(joinDataIndexSet.size() > 0) {
-					traverseOriginalFile();
-				}
-			}
-		}
-		/**
-		 * 多个order可能对应同一个good或buyer
-		 * 根据orderRow的信息查找出无重复的good/buyer的index信息
-		 */
-		private void getUniqueDataIndex() {
-			for (Row orderRow : orderRows) {
-				String id = orderRow.getKV(joinTable).valueAsString();
-				// 已经Map包含这个Row了就跳过
-				if (!joinDataMap.containsKey(id)) {
-					if (joinTable.equals("buyerid")) {
-						joinDataIndexSet.add(buyerMemoryIndexMap.get(id));
-					} else {
-						joinDataIndexSet.add(goodMemoryIndexMap.get(id));
-					}
-				}
-			}
-		}
-		
-		private void traverseOriginalFile() {
-			// 此时得到的joinDataIndexSet 为无重复的good/buyer的index信息
-			Map<String,PriorityQueue<String[]>> originalDataAccessSequence = createOrderDataAccessSequence(joinDataIndexSet);
-			for (Map.Entry<String, PriorityQueue<String[]>> e : originalDataAccessSequence.entrySet()) {
-				String file = null;
-				if (joinTable.equals("buyerid")) {
-					file = buyerFiles.get(Integer.parseInt(e.getKey()));
-				} else {
-					file = goodFiles.get(Integer.parseInt(e.getKey()));
-				}
-				String[] sequence;
-				String line;
-				try(RandomAccessFile orderFileReader = new RandomAccessFile(file, "r")) {
-					sequence = e.getValue().poll();
-					while(sequence != null) {
-						Long offset = Long.parseLong(sequence[0]);
-						byte[] content = new byte[Integer.valueOf(sequence[1])];
-						orderFileReader.seek(offset);
-						orderFileReader.read(content);
-						line = new String(content);
-
-						Row kvMap = StringUtils.createKVMapFromLine(line, CommonConstants.SPLITTER);
-						if (joinTable.equals("buyerid")) {
-							String id = kvMap.getKV("buyerid").valueAsString();
-							joinDataMap.put(id, kvMap);
-						} else {
-							String id = kvMap.getKV("goodid").valueAsString();
-							joinDataMap.put(id, kvMap);
-						}
-						sequence = e.getValue().poll();
-					}
-				} catch (IOException e1) {
-
-				} 	
-			}	
-		}
-		
-		@Override
-		public boolean hasNext() {
-			return orderQueue != null && orderQueue.size() > 0;
-		}
-
-		@Override
-		public Result next() {
-			if (!hasNext()) {
-				return null;
-			}
-			// 不需要join的时候直接create
-			if (joinTable == null){
-				return ResultImpl.createResultRow(orderQueue.poll(), fixRow, null, createQueryKeys(queryKeys));
-			} else {
-				// 需要join的时候从Map中拉取
-				Row orderRow = orderQueue.poll();
-				Row dataRow = joinDataMap.get(orderRow.getKV(joinTable).valueAsString());
-				return ResultImpl.createResultRow(orderRow, fixRow, dataRow, createQueryKeys(queryKeys));
-			}	
-		}
-		@Override
-		public void remove() {
-			// TODO Auto-generated method stub	
-		}
-	}
 	
-	
-	/**
-	 * 针对query 2,3,4的多线程order查询任务
-	 */
-	private class OrderDataSearch implements Callable<List<Row>> {
-		private int fileIndex;
-		private PriorityQueue<String[]> sequenceQueue;
-		
-		public OrderDataSearch(int fileIndex, PriorityQueue<String[]> sequenceQueue) {
-			this.fileIndex = fileIndex;
-			this.sequenceQueue = sequenceQueue;
-		}
-		@Override
-		public List<Row> call() throws Exception {
-			// 这个sequence不可能是负数
-			List<Row> result = new ArrayList<>(sequenceQueue.size());
-			String file = orderFiles.get(fileIndex);
-			String[] sequence;
-			try(RandomAccessFile orderFileReader = new RandomAccessFile(file, "r")) {
-				sequence = sequenceQueue.poll();
-				while(sequence != null) {
-					Long offset = Long.parseLong(sequence[0]);
-					byte[] content = new byte[Integer.valueOf(sequence[1])];
-					orderFileReader.seek(offset);
-					orderFileReader.read(content);
-					String line = new String(content);
-					Row kvMap = StringUtils.createKVMapFromLine(line, CommonConstants.SPLITTER);
-					// buyer的话需要join
-					result.add(kvMap);
-					sequence = sequenceQueue.poll();
-				}
-			} 	
-			return result;
-		}
-	}
+
 
 	public Iterator<Result> queryOrdersBySaler(String salerid, String goodid, Collection<String> keys) {
 		while (this.isConstructed == false) {
@@ -853,7 +684,7 @@ public class OrderSystemImpl implements OrderSystem {
 		final Collection<String> queryKeys = keys;
 
 		int index = HashUtil.indexFor(goodid, CommonConstants.QUERY3_ORDER_SPLIT_SIZE);
-		String indexFile = this.query3Path + File.separator + index + CommonConstants.INDEX_SUFFIX;
+		String indexFile = Globals.getQuery3Path() + File.separator + index + CommonConstants.INDEX_SUFFIX;
 		List<String> offsetRecords = new ArrayList<>(512);
 		try (ExtendBufferedReader indexFileReader = IOUtils.createReader(indexFile, CommonConstants.INDEX_BLOCK_SIZE)){
 			String line = indexFileReader.readLine();
@@ -871,8 +702,8 @@ public class OrderSystemImpl implements OrderSystem {
 				List<Future<List<Row>>> result = new ArrayList<>();
 				for (Map.Entry<String, PriorityQueue<String[]>> e : buyerOrderAccessSequence.entrySet()) {
 					int fileIndex = Integer.parseInt(e.getKey());
-					OrderDataSearch search = new OrderDataSearch(fileIndex, e.getValue());
-					result.add(multiQueryPool3.submit(search));
+					CallableOrderDataSearch search = new CallableOrderDataSearch(fileIndex, e.getValue());
+					result.add(Globals.getMultiQueryPool3().submit(search));
 				}
 				for (Future<List<Row>> f: result) {
 					try {
@@ -914,7 +745,7 @@ public class OrderSystemImpl implements OrderSystem {
 		};
 //		 查询3可能不需要join的buyer
 		String joinTable = tag.equals("buyer") || tag.equals("all") ? "buyerid" : null;
-		JoinOne joinResult = new JoinOne(salerGoodOrders, goodRow, comparator, joinTable, createQueryKeys(queryKeys));
+		MultipleJoin joinResult = new MultipleJoin(salerGoodOrders, goodRow, comparator, joinTable, createQueryKeys(queryKeys));
 		return joinResult;
 	}
 
@@ -945,8 +776,7 @@ public class OrderSystemImpl implements OrderSystem {
 		List<Row> ordersData = new ArrayList<>(512);
 		
 		int index = HashUtil.indexFor(goodid, CommonConstants.QUERY3_ORDER_SPLIT_SIZE);
-		String indexFile = this.query3Path + File.separator + index + CommonConstants.INDEX_SUFFIX;
-//			cachedStrings = new ArrayList<>(100);
+		String indexFile = Globals.getQuery3Path() + File.separator + index + CommonConstants.INDEX_SUFFIX;
 		List<String> offsetRecords = new ArrayList<>(512);
 		try(ExtendBufferedReader indexFileReader = IOUtils.createReader(indexFile, CommonConstants.INDEX_BLOCK_SIZE)){
 			String line = indexFileReader.readLine();
@@ -966,8 +796,8 @@ public class OrderSystemImpl implements OrderSystem {
 				List<Future<List<Row>>> result = new ArrayList<>();
 				for (Map.Entry<String, PriorityQueue<String[]>> e : buyerOrderAccessSequence.entrySet()) {
 					int fileIndex = Integer.parseInt(e.getKey());
-					OrderDataSearch search = new OrderDataSearch(fileIndex, e.getValue());
-					result.add(multiQueryPool4.submit(search));
+					CallableOrderDataSearch search = new CallableOrderDataSearch(fileIndex, e.getValue());
+					result.add(Globals.getMultiQueryPool4().submit(search));
 				}
 				for (Future<List<Row>> f: result) {
 					try {
@@ -1027,7 +857,7 @@ public class OrderSystemImpl implements OrderSystem {
 
 			};
 			// 不需要join good信息
-			JoinOne joinResult = new JoinOne(ordersData, null, comparator, "buyerid", queryingKeys);
+			MultipleJoin joinResult = new MultipleJoin(ordersData, null, comparator, "buyerid", queryingKeys);
 			while (joinResult.hasNext()) {
 				allData.add(joinResult.next());
 			}
@@ -1097,7 +927,7 @@ public class OrderSystemImpl implements OrderSystem {
 		if (value == null) {
 			return null;
 		}
-		String indexFile = this.query3Path + File.separator + index + CommonConstants.INDEX_SUFFIX;
+		String indexFile = Globals.getQuery3Path() + File.separator + index + CommonConstants.INDEX_SUFFIX;
 		int count = 0;
 		// 此处只是统计goodId对应的order的个数
 		try(ExtendBufferedReader indexFileReader = IOUtils.createReader(indexFile, CommonConstants.INDEX_BLOCK_SIZE)){

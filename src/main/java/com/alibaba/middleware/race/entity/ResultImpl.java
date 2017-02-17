@@ -20,14 +20,15 @@ public class ResultImpl implements Result {
 	
 	/**
 	 * 根据order good buyer来构造结果 buyer和good可以为null,相当于不join
-	 * 此处buyer和good可以为null是为了查询join的优化
+	 * 此处buyer和good可以为null是为了join代码的一致性
+	 * bgData可以是good或buyer data，顺序无所谓
 	 * @param orderData
-	 * @param buyerData
-	 * @param goodData
+	 * @param bgDataOne 
+	 * @param bgDataTwo
 	 * @param queryingKeys
 	 * @return
 	 */
-	public static ResultImpl createResultRow(Row orderData, Row buyerData, Row goodData,
+	public static ResultImpl createResultRow(Row orderData, Row bgDataOne, Row bgDataTwo,
 			Set<String> queryingKeys) {
 		
 		Row allkv = new Row();
@@ -43,16 +44,16 @@ public class ResultImpl implements Result {
 				allkv.put(kv.key(), kv);
 			}
 		}
-		if(buyerData != null) {
-			for (KV kv : buyerData.values()) {
+		if(bgDataOne != null) {
+			for (KV kv : bgDataOne.values()) {
 				if (queryingKeys == null || queryingKeys.contains(kv.key())) {
 					allkv.put(kv.key(), kv);
 				}
 			}
 		}
 		
-		if (goodData != null) {
-			for (KV kv : goodData.values()) {
+		if (bgDataTwo != null) {
+			for (KV kv : bgDataTwo.values()) {
 				if (queryingKeys == null || queryingKeys.contains(kv.key())) {
 					allkv.put(kv.key(), kv);
 				}
