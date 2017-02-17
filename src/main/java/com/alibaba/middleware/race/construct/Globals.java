@@ -3,57 +3,125 @@ package com.alibaba.middleware.race.construct;
 import java.util.HashMap;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 
-public class Globals {
-	public static HashMap<String,String> buyerMemoryIndexMap;
-	public static HashMap<String,String> goodMemoryIndexMap; 
-	
-	public static List<String> orderFiles;
-	public static List<String> goodFiles;
-	public static List<String> buyerFiles;
-	
-	public static String query1Path;
-	public static String query2Path;
-	public static String query3Path;
+import com.alibaba.middleware.race.utils.ExtendBufferedWriter;
 
-	public static ExecutorService multiQueryPool2;
-	public static ExecutorService multiQueryPool3;
-	public static ExecutorService multiQueryPool4;
+public enum Globals {
+	INSTANCE;
+	static HashMap<String,String> buyerMemoryIndexMap;
+	static HashMap<String,String> goodMemoryIndexMap; 
+	static ExecutorService multiQueryPool2;
+	static ExecutorService multiQueryPool3;
+	static ExecutorService multiQueryPool4;
+	
+	static List<String> orderFiles;
+	static List<String> goodFiles;
+	static List<String> buyerFiles;
 	
 	
-	public static HashMap<String, String> getBuyerMemoryIndexMap() {
+	//记录每个文件的行当前写入的record数量，当大于INDEX_LINE_RECORDS的时候，换行
+	static int[] query1LineRecords;
+	static int[] query2LineRecords;
+	static int[] query3LineRecords;
+	
+	static String query1Path;
+	static String query2Path;
+	static String query3Path;
+	
+	static ExtendBufferedWriter[] query1IndexWriters;	
+	static ExtendBufferedWriter[] query2IndexWriters;
+	static ExtendBufferedWriter[] query3IndexWriters;
+	
+	
+	public HashMap<String, String> getBuyerMemoryIndexMap() {
 		return buyerMemoryIndexMap;
 	}
-	public static HashMap<String, String> getGoodMemoryIndexMap() {
+	public void setBuyerMemoryIndexMap(HashMap<String, String> buyerMemoryIndexMap) {
+		this.buyerMemoryIndexMap = buyerMemoryIndexMap;
+	}
+	public HashMap<String, String> getGoodMemoryIndexMap() {
 		return goodMemoryIndexMap;
 	}
-	public static List<String> getOrderFiles() {
-		return orderFiles;
+	public void setGoodMemoryIndexMap(HashMap<String, String> goodMemoryIndexMap) {
+		this.goodMemoryIndexMap = goodMemoryIndexMap;
 	}
-	public static List<String> getGoodFiles() {
-		return goodFiles;
-	}
-	public static List<String> getBuyerFiles() {
-		return buyerFiles;
-	}
-	public static String getQuery1Path() {
-		return query1Path;
-	}
-	public static String getQuery2Path() {
-		return query2Path;
-	}
-	public static String getQuery3Path() {
-		return query3Path;
-	}
-	public static ExecutorService getMultiQueryPool2() {
+	public ExecutorService getMultiQueryPool2() {
 		return multiQueryPool2;
 	}
-	public static ExecutorService getMultiQueryPool3() {
+	public void setMultiQueryPool2(ExecutorService multiQueryPool2) {
+		this.multiQueryPool2 = multiQueryPool2;
+	}
+	public ExecutorService getMultiQueryPool3() {
 		return multiQueryPool3;
 	}
-	public static ExecutorService getMultiQueryPool4() {
+	public void setMultiQueryPool3(ExecutorService multiQueryPool3) {
+		this.multiQueryPool3 = multiQueryPool3;
+	}
+	public ExecutorService getMultiQueryPool4() {
 		return multiQueryPool4;
 	}
+	public void setMultiQueryPool4(ExecutorService multiQueryPool4) {
+		this.multiQueryPool4 = multiQueryPool4;
+	}
+	public List<String> getOrderFiles() {
+		return orderFiles;
+	}
+	public void setOrderFiles(List<String> orderFiles) {
+		this.orderFiles = orderFiles;
+	}
+	public List<String> getGoodFiles() {
+		return goodFiles;
+	}
+	public void setGoodFiles(List<String> goodFiles) {
+		this.goodFiles = goodFiles;
+	}
+	public List<String> getBuyerFiles() {
+		return buyerFiles;
+	}
+	public void setBuyerFiles(List<String> buyerFiles) {
+		this.buyerFiles = buyerFiles;
+	}
+	public int[] getQuery1LineRecords() {
+		return query1LineRecords;
+	}
+	public void setQuery1LineRecords(int[] query1LineRecords) {
+		this.query1LineRecords = query1LineRecords;
+	}
+	public int[] getQuery2LineRecords() {
+		return query2LineRecords;
+	}
+	public void setQuery2LineRecords(int[] query2LineRecords) {
+		this.query2LineRecords = query2LineRecords;
+	}
+	public int[] getQuery3LineRecords() {
+		return query3LineRecords;
+	}
+	public void setQuery3LineRecords(int[] query3LineRecords) {
+		this.query3LineRecords = query3LineRecords;
+	}
+	public String getQuery1Path() {
+		return query1Path;
+	}
+
+	public String getQuery2Path() {
+		return query2Path;
+	}
+
+	public String getQuery3Path() {
+		return query3Path;
+	}
+
+	public ExtendBufferedWriter[] getQuery1IndexWriters() {
+		return query1IndexWriters;
+	}
+
+	public ExtendBufferedWriter[] getQuery2IndexWriters() {
+		return query2IndexWriters;
+	}
+
+	public ExtendBufferedWriter[] getQuery3IndexWriters() {
+		return query3IndexWriters;
+	}
+
 
 }

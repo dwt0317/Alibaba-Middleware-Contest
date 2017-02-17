@@ -34,8 +34,8 @@ public class BuyerGoodIndexCreator implements Runnable {
 		this.files = files;
 		this.blockSize = blockSize;
 		this.bufferArray = new IndexBuffer[CommonConstants.INDEX_BUFFER_SIZE];
-		this.goodMemoryIndexMap = Globals.getGoodMemoryIndexMap();
-		this.buyerMemoryIndexMap = Globals.getBuyerMemoryIndexMap();
+		this.goodMemoryIndexMap = Globals.goodMemoryIndexMap;
+		this.buyerMemoryIndexMap = Globals.buyerMemoryIndexMap;
 	}
 
 	@Override
