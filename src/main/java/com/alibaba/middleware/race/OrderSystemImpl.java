@@ -21,7 +21,7 @@ import java.util.concurrent.TimeUnit;
 import com.alibaba.middleware.race.OrderSystem.Result;
 import com.alibaba.middleware.race.construct.BuyerGoodIndexCreator;
 import com.alibaba.middleware.race.construct.ConstructHelper;
-import com.alibaba.middleware.race.construct.Globals;
+import com.alibaba.middleware.race.construct.IndexVariables;
 import com.alibaba.middleware.race.construct.OrderIndexCreator;
 import com.alibaba.middleware.race.entity.KV;
 import com.alibaba.middleware.race.entity.ResultImpl;
@@ -51,26 +51,26 @@ public class OrderSystemImpl implements OrderSystem {
 	 * 根据参数新建新建文件 目录等操作
 	 */
 	public OrderSystemImpl() {			
-		Globals.INSTANCE.setQuery1LineRecords(new int[CommonConstants.QUERY1_ORDER_SPLIT_SIZE]);
-		Globals.INSTANCE.setQuery2LineRecords(new int[CommonConstants.QUERY2_ORDER_SPLIT_SIZE]);
-		Globals.INSTANCE.setQuery3LineRecords(new int[CommonConstants.QUERY3_ORDER_SPLIT_SIZE]);
+		IndexVariables.INSTANCE.setQuery1LineRecords(new int[CommonConstants.QUERY1_ORDER_SPLIT_SIZE]);
+		IndexVariables.INSTANCE.setQuery2LineRecords(new int[CommonConstants.QUERY2_ORDER_SPLIT_SIZE]);
+		IndexVariables.INSTANCE.setQuery3LineRecords(new int[CommonConstants.QUERY3_ORDER_SPLIT_SIZE]);
 		
-		Globals.INSTANCE.setGoodMemoryIndexMap(new HashMap<String,String>(4194304, 1f));	//测试得到good的数目为4194304
-		Globals.INSTANCE.setBuyerMemoryIndexMap(new HashMap<String,String>(8388608, 1f));
+		IndexVariables.INSTANCE.setGoodMemoryIndexMap(new HashMap<String,String>(4194304, 1f));	//测试得到good的数目为4194304
+		IndexVariables.INSTANCE.setBuyerMemoryIndexMap(new HashMap<String,String>(8388608, 1f));
 
 		this.isConstructed = false;
 		
-		Globals.INSTANCE.setMultiQueryPool2(Executors.newFixedThreadPool(8));
-		Globals.INSTANCE.setMultiQueryPool3(Executors.newFixedThreadPool(8));
-		Globals.INSTANCE.setMultiQueryPool4(Executors.newFixedThreadPool(8));
+		IndexVariables.INSTANCE.setMultiQueryPool2(Executors.newFixedThreadPool(8));
+		IndexVariables.INSTANCE.setMultiQueryPool3(Executors.newFixedThreadPool(8));
+		IndexVariables.INSTANCE.setMultiQueryPool4(Executors.newFixedThreadPool(8));
 	}
 
 	
 	public void construct(Collection<String> orderFiles, Collection<String> buyerFiles, Collection<String> goodFiles,
 			Collection<String> storeFolders) throws IOException, InterruptedException {	
-		Globals.INSTANCE.setOrderFiles(new ArrayList<>(orderFiles));
-		Globals.INSTANCE.setBuyerFiles(new ArrayList<>(buyerFiles));
-		Globals.INSTANCE.setGoodFiles(new ArrayList<>(goodFiles));
+		IndexVariables.INSTANCE.setOrderFiles(new ArrayList<>(orderFiles));
+		IndexVariables.INSTANCE.setBuyerFiles(new ArrayList<>(buyerFiles));
+		IndexVariables.INSTANCE.setGoodFiles(new ArrayList<>(goodFiles));
 		long start = System.currentTimeMillis();
 		ConstructHelper.constructDir(storeFolders);
 		final long dir = System.currentTimeMillis();
@@ -117,7 +117,7 @@ public class OrderSystemImpl implements OrderSystem {
 
 		Row orderData = null;	//query result
 		int index = HashUtil.indexFor(orderId, CommonConstants.QUERY1_ORDER_SPLIT_SIZE);
-		String indexFile = Globals.INSTANCE.getQuery1Path() + File.separator + index + CommonConstants.INDEX_SUFFIX;
+		String indexFile = IndexVariables.INSTANCE.getQuery1Path() + File.separator + index + CommonConstants.INDEX_SUFFIX;
 		
 		String[] indexArray = null;
 		try (ExtendBufferedReader indexFileReader = IOUtils.createReader(indexFile, CommonConstants.INDEX_BLOCK_SIZE)){
@@ -138,7 +138,7 @@ public class OrderSystemImpl implements OrderSystem {
 				return null;
 			}
 			//根据索引去原文件中寻找
-			String file = Globals.INSTANCE.getOrderFiles().get(Integer.parseInt(indexArray[0]));
+			String file = IndexVariables.INSTANCE.getOrderFiles().get(Integer.parseInt(indexArray[0]));
 			Long offset = Long.parseLong(indexArray[1]);
 			byte[] content = new byte[Integer.valueOf(indexArray[2])];
 			try (RandomAccessFile orderFileReader = new RandomAccessFile(file, "r")) {
@@ -182,7 +182,7 @@ public class OrderSystemImpl implements OrderSystem {
 	
 		if (validParameter) {
 			int index = HashUtil.indexFor(buyerid, CommonConstants.QUERY2_ORDER_SPLIT_SIZE);
-			String indexFile = Globals.INSTANCE.getQuery2Path() + File.separator + index + CommonConstants.INDEX_SUFFIX;
+			String indexFile = IndexVariables.INSTANCE.getQuery2Path() + File.separator + index + CommonConstants.INDEX_SUFFIX;
 						
 			// query2的order索引中，key为id+createtime，value为file offset length
 			List<String> buyerOrderList = new ArrayList<>(100);
@@ -207,7 +207,7 @@ public class OrderSystemImpl implements OrderSystem {
 					for (Map.Entry<String, PriorityQueue<String[]>> e : buyerOrderAccessSequence.entrySet()) {
 						int fileIndex = Integer.parseInt(e.getKey());
 						CallableOrderDataSearch search = new CallableOrderDataSearch(fileIndex, e.getValue());
-						result.add(Globals.INSTANCE.getMultiQueryPool2().submit(search));		
+						result.add(IndexVariables.INSTANCE.getMultiQueryPool2().submit(search));		
 					}
 					for (Future<List<Row>> f: result) {
 						try {
@@ -264,7 +264,7 @@ public class OrderSystemImpl implements OrderSystem {
 		final Collection<String> queryKeys = keys;
 
 		int index = HashUtil.indexFor(goodid, CommonConstants.QUERY3_ORDER_SPLIT_SIZE);
-		String indexFile = Globals.INSTANCE.getQuery3Path() + File.separator + index + CommonConstants.INDEX_SUFFIX;
+		String indexFile = IndexVariables.INSTANCE.getQuery3Path() + File.separator + index + CommonConstants.INDEX_SUFFIX;
 		List<String> offsetRecords = new ArrayList<>(512);
 		try (ExtendBufferedReader indexFileReader = IOUtils.createReader(indexFile, CommonConstants.INDEX_BLOCK_SIZE)){
 			String line = indexFileReader.readLine();
@@ -283,7 +283,7 @@ public class OrderSystemImpl implements OrderSystem {
 				for (Map.Entry<String, PriorityQueue<String[]>> e : buyerOrderAccessSequence.entrySet()) {
 					int fileIndex = Integer.parseInt(e.getKey());
 					CallableOrderDataSearch search = new CallableOrderDataSearch(fileIndex, e.getValue());
-					result.add(Globals.INSTANCE.getMultiQueryPool3().submit(search));
+					result.add(IndexVariables.INSTANCE.getMultiQueryPool3().submit(search));
 				}
 				for (Future<List<Row>> f: result) {
 					try {
@@ -351,7 +351,7 @@ public class OrderSystemImpl implements OrderSystem {
 		
 		List<Row> ordersData = new ArrayList<>(512);
 		int index = HashUtil.indexFor(goodid, CommonConstants.QUERY3_ORDER_SPLIT_SIZE);
-		String indexFile = Globals.INSTANCE.getQuery3Path() + File.separator + index + CommonConstants.INDEX_SUFFIX;
+		String indexFile = IndexVariables.INSTANCE.getQuery3Path() + File.separator + index + CommonConstants.INDEX_SUFFIX;
 		List<String> offsetRecords = new ArrayList<>(512);
 		try(ExtendBufferedReader indexFileReader = IOUtils.createReader(indexFile, CommonConstants.INDEX_BLOCK_SIZE)){
 			String line = indexFileReader.readLine();
@@ -370,7 +370,7 @@ public class OrderSystemImpl implements OrderSystem {
 				for (Map.Entry<String, PriorityQueue<String[]>> e : buyerOrderAccessSequence.entrySet()) {
 					int fileIndex = Integer.parseInt(e.getKey());
 					CallableOrderDataSearch search = new CallableOrderDataSearch(fileIndex, e.getValue());
-					result.add(Globals.INSTANCE.getMultiQueryPool4().submit(search));
+					result.add(IndexVariables.INSTANCE.getMultiQueryPool4().submit(search));
 				}
 				for (Future<List<Row>> f: result) {
 					try {

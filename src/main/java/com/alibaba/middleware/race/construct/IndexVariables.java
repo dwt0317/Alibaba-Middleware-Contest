@@ -6,8 +6,9 @@ import java.util.concurrent.ExecutorService;
 
 import com.alibaba.middleware.race.utils.ExtendBufferedWriter;
 
-public enum Globals {
+public enum IndexVariables {
 	INSTANCE;
+	
 	static HashMap<String,String> buyerMemoryIndexMap;
 	static HashMap<String,String> goodMemoryIndexMap; 
 	static ExecutorService multiQueryPool2;
@@ -37,67 +38,67 @@ public enum Globals {
 		return buyerMemoryIndexMap;
 	}
 	public void setBuyerMemoryIndexMap(HashMap<String, String> buyerMemoryIndexMap) {
-		this.buyerMemoryIndexMap = buyerMemoryIndexMap;
+		IndexVariables.buyerMemoryIndexMap = buyerMemoryIndexMap;
 	}
 	public HashMap<String, String> getGoodMemoryIndexMap() {
 		return goodMemoryIndexMap;
 	}
 	public void setGoodMemoryIndexMap(HashMap<String, String> goodMemoryIndexMap) {
-		this.goodMemoryIndexMap = goodMemoryIndexMap;
+		IndexVariables.goodMemoryIndexMap = goodMemoryIndexMap;
 	}
 	public ExecutorService getMultiQueryPool2() {
 		return multiQueryPool2;
 	}
 	public void setMultiQueryPool2(ExecutorService multiQueryPool2) {
-		this.multiQueryPool2 = multiQueryPool2;
+		IndexVariables.multiQueryPool2 = multiQueryPool2;
 	}
 	public ExecutorService getMultiQueryPool3() {
 		return multiQueryPool3;
 	}
 	public void setMultiQueryPool3(ExecutorService multiQueryPool3) {
-		this.multiQueryPool3 = multiQueryPool3;
+		IndexVariables.multiQueryPool3 = multiQueryPool3;
 	}
 	public ExecutorService getMultiQueryPool4() {
 		return multiQueryPool4;
 	}
 	public void setMultiQueryPool4(ExecutorService multiQueryPool4) {
-		this.multiQueryPool4 = multiQueryPool4;
+		IndexVariables.multiQueryPool4 = multiQueryPool4;
 	}
 	public List<String> getOrderFiles() {
 		return orderFiles;
 	}
 	public void setOrderFiles(List<String> orderFiles) {
-		this.orderFiles = orderFiles;
+		IndexVariables.orderFiles = orderFiles;
 	}
 	public List<String> getGoodFiles() {
 		return goodFiles;
 	}
 	public void setGoodFiles(List<String> goodFiles) {
-		this.goodFiles = goodFiles;
+		IndexVariables.goodFiles = goodFiles;
 	}
 	public List<String> getBuyerFiles() {
 		return buyerFiles;
 	}
 	public void setBuyerFiles(List<String> buyerFiles) {
-		this.buyerFiles = buyerFiles;
+		IndexVariables.buyerFiles = buyerFiles;
 	}
 	public int[] getQuery1LineRecords() {
 		return query1LineRecords;
 	}
 	public void setQuery1LineRecords(int[] query1LineRecords) {
-		this.query1LineRecords = query1LineRecords;
+		IndexVariables.query1LineRecords = query1LineRecords;
 	}
 	public int[] getQuery2LineRecords() {
 		return query2LineRecords;
 	}
 	public void setQuery2LineRecords(int[] query2LineRecords) {
-		this.query2LineRecords = query2LineRecords;
+		IndexVariables.query2LineRecords = query2LineRecords;
 	}
 	public int[] getQuery3LineRecords() {
 		return query3LineRecords;
 	}
 	public void setQuery3LineRecords(int[] query3LineRecords) {
-		this.query3LineRecords = query3LineRecords;
+		IndexVariables.query3LineRecords = query3LineRecords;
 	}
 	public String getQuery1Path() {
 		return query1Path;
