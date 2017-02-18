@@ -6,6 +6,9 @@ import java.util.concurrent.ExecutorService;
 
 import com.alibaba.middleware.race.utils.ExtendBufferedWriter;
 
+/**
+ * 管理索引构建和查询的共享变量
+ */
 public enum IndexVariables {
 	INSTANCE;
 	

@@ -349,7 +349,7 @@ public class OrderSystemImpl implements OrderSystem {
 			return null;
 		}
 		
-		List<Row> ordersData = new ArrayList<>(512);
+		List<Row> ordersDatas = new ArrayList<>(512);
 		int index = HashUtil.indexFor(goodid, CommonConstants.QUERY3_ORDER_SPLIT_SIZE);
 		String indexFile = IndexVariables.INSTANCE.getQuery3Path() + File.separator + index + CommonConstants.INDEX_SUFFIX;
 		List<String> offsetRecords = new ArrayList<>(512);
@@ -377,7 +377,7 @@ public class OrderSystemImpl implements OrderSystem {
 						List<Row> list = f.get();
 						if (list != null) {
 							for(Row row : list) {
-								ordersData.add(row);
+								ordersDatas.add(row);
 							}
 						}
 					} catch (InterruptedException | ExecutionException e1) {
@@ -388,43 +388,38 @@ public class OrderSystemImpl implements OrderSystem {
 			} else {
 				System.out.println("query4 can't find order:");
 			}
-		} catch (IOException e) {
-			
-		}
+		} catch (IOException e) {}
 
 		// 如果不存在对应的order 直接返回null
-		if (ordersData.size() == 0) {
+		if (ordersDatas.size() == 0) {
 			return null;
 		}
 		HashSet<String> queryingKeys = new HashSet<String>();
 		queryingKeys.add(key);
 		
-		List<Result> allData = new ArrayList<>(ordersData.size());
+		List<Result> allData = new ArrayList<>(ordersDatas.size());
 		// query4至多只需要join buyer信息
 		if(tag.equals("order")) { // 说明此时只有orderData 不需要join
-			for (Row orderData : ordersData) {
+			for (Row orderData : ordersDatas) {
 				allData.add(ResultImpl.createResultRow(orderData, null, null, queryingKeys));
 			}
-		} else { // buyer或者all
+		} else { // 需要join buyer
 			Comparator<Row> comparator = new Comparator<Row>() {
 				@Override
 				public int compare(Row o1, Row o2) {
-					// TODO Auto-generated method stub
-					long o2Time = 0L;
-					long o1Time = 0L;			
+					long o2Id = 0L;
+					long o1Id = 0L;			
 					try {
-						o1Time = o1.get("orderid").valueAsLong();
-						o2Time = o2.get("orderid").valueAsLong();
+						o1Id = o1.get("orderid").valueAsLong();
+						o2Id = o2.get("orderid").valueAsLong();
 					} catch (TypeException e) {
-						// TODO Auto-generated catch block
-						System.out.println("Catch type error");
 						e.printStackTrace();
 					}
-					return o1Time - o2Time > 0 ? 1 : -1;
+					return o1Id - o2Id > 0 ? 1 : -1;
 				}
 			};
 			// 不需要join good信息
-			MultipleJoinResult joinResult = new MultipleJoinResult(ordersData, null, comparator, "buyerid", queryingKeys);
+			MultipleJoinResult joinResult = new MultipleJoinResult(ordersDatas, null, comparator, "buyerid", queryingKeys);
 			while (joinResult.hasNext()) {
 				allData.add(joinResult.next());
 			}
@@ -444,8 +439,7 @@ public class OrderSystemImpl implements OrderSystem {
 			if (hasValidData) {
 				return new KV(key, Long.toString(sum));
 			}
-		} catch (TypeException e) {
-		}
+		} catch (TypeException e) {}
 
 		// accumulate as double
 		try {
@@ -461,11 +455,7 @@ public class OrderSystemImpl implements OrderSystem {
 			if (hasValidData) {
 				return new KV(key, Double.toString(sum));
 			}
-		} catch (TypeException e) {
-		}
-
+		} catch (TypeException e) {}
 		return null;
 	}
-	
-	
 }

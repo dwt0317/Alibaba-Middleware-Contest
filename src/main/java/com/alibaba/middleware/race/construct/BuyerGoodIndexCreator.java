@@ -15,8 +15,8 @@ import com.alibaba.middleware.race.utils.StringUtils;
 
 
 /**
- * Create index for buyer and good.
- * Indexes of buyer and good info are stored in memory with HashMap
+ * buyer和good索引构建类
+ * buyer和good放在内存中
  */
 public class BuyerGoodIndexCreator implements Runnable {
 	private String hashId;

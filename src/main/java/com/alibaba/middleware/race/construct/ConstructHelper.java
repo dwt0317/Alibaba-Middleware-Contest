@@ -12,6 +12,9 @@ import com.alibaba.middleware.race.utils.CommonConstants;
 import com.alibaba.middleware.race.utils.ExtendBufferedWriter;
 import com.alibaba.middleware.race.utils.IOUtils;
 
+/**
+ * Helper for constructing index
+ */
 public class ConstructHelper {
 	
 	public static void constructHashIndex() {

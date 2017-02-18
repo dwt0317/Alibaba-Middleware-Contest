@@ -5,7 +5,6 @@ public class IndexBuffer {
 	private String line;
 	
 	public IndexBuffer(Object index, String line) {
-		super();
 		this.index = index;
 		this.line = line;
 	}

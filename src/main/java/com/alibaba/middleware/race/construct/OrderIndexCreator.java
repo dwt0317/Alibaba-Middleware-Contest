@@ -16,6 +16,9 @@ import com.alibaba.middleware.race.utils.IOUtils;
 import com.alibaba.middleware.race.utils.IndexBuffer;
 import com.alibaba.middleware.race.utils.StringUtils;
 
+/**
+ * 构建order信息索引
+ */
 public class OrderIndexCreator implements Runnable{
 	private String hashId;
 	private ExtendBufferedWriter[] offSetwriters;
@@ -84,7 +87,6 @@ public class OrderIndexCreator implements Runnable{
 						offSetMsg.append(length);
 						
 						// 将对应index文件的行记录数++ 如果超过阈值则换行并清空
-						// 限制每行的记录数，前后差别不大，暂时设为1
 						this.indexLineRecords[index]++;
 						if ( this.indexLineRecords[index] == CommonConstants.INDEX_LINE_RECORDS) {
 							offSetMsg.append('\n');

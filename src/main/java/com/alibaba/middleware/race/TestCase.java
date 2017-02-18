@@ -8,6 +8,9 @@ import java.util.List;
 import com.alibaba.middleware.race.OrderSystem.KeyValue;
 import com.alibaba.middleware.race.OrderSystem.Result;
 
+/**
+ * 测试用例类
+ */
 public class TestCase {
 	public static void main(String[] args) throws IOException, InterruptedException {
 		// init order system
