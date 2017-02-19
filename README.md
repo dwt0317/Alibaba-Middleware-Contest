@@ -16,9 +16,9 @@
 正式环境中的数据分为order,buyer和good三种，实际数据量分别在4亿、800w和400w。 比赛的机器配置为3 * 1.5T的硬盘 8核CPU和 4G的JVM内存。
 
 ### 查询和索引结构
-由于原始的order文件较大，因此采用hash的思路将大文件文件切割成若干个小文件。
+由于原始的order文件较大，不可能去遍历查询，因此在索引文件中记录每条记录的偏移，并利用hash的思路将索引文件分割为小文件。
 
-1. 查询1:索引的思路就是根据orderid来hash切割order文件，文件里面记录了每个orderid对应的order原始文件、偏移offset和记录长度length。 查找的时候根据orderid去hash索引文件中查找对应的索引，并去原始的order文件中查找记录。
+1. 查询1:索引的思路就是根据orderid来hash切割order文件，索引文件里面记录了每个orderid对应的order原始文件、偏移offset和记录长度length。 查找的时候根据orderid去hash索引文件中查找对应的索引，并去原始的order文件中查找记录。
 2. 查询2、3、4的结构与查询1很类似,。查询2的索引格式为\<buyerid+createtime: 对应的order原始文件、偏移offset和记录长度length\>。最后去order的原始文件中查找原始order的记录。查询3, 4的索引格式为\<goodid：order索引信息\>。
 3. Join操作:4种查询可能都会涉及到buyer和good原始数据字段的查询，此时需要根据对应的buyerid或者(goodid)去对应的buyer(或者good)文件中读取对应的字段。这部分信息索引的结构也是buyer(good)原始文件、偏移offset和记录长度length。由于buyer和good的数据量较小，这部分按照buyerid(或者goodid)放到内存中，使用hashmap进行记录。
 
